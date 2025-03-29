@@ -1,0 +1,110 @@
+#include <msp430.h> 
+
+int i;
+int flag=0;
+int flag2=0;
+int desbordamiento=0;
+unsigned int contador=0;
+int cont_desbord;
+char recepcion[100];
+
+void imprimir(char mensaje[], unsigned int longitud); //Declaracion de funcion para imprimir
+
+// 1.-Activar la funcion
+// 2.-Habilitar el reset en USCI
+// 3.- Fuente
+// 4.- Velocidad de TX1RX
+// 5.- A trabajar
+// 6.- Hab. interrupcion
+
+
+void main(void)
+{
+    WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
+    P1DIR |= BIT0;
+
+    P4SEL |= BIT5 | BIT4;//Activar la funcion de comunicacion en Tx y Rx en P4.4 y P4.5
+
+    P3SEL |= BIT3 | BIT4;//Activar la funcion de comunicacion en Tx y Rx en P3.3 y P3.4
+
+    UCA1CTL1 |= UCSWRST; //Habilitamos el reset en USCIAAAA
+    UCA1CTL1 |= UCSSEL__SMCLK;//Conectar la fuente SMCLK a la USCI
+    UCA1BR0 |= 109; //Establecer la velocidad de 9600 bds
+    UCA1MCTL |= UCBRS_2; //Otro registro para configurar la velocidad verificar tabla 36.4
+    UCA1CTL1 &= ~UCSWRST; //Se desconecta el reset
+    UCA1IE |= UCRXIE; // Habilitamos interrupcion de recepcion
+
+    UCA0CTL1 |= UCSWRST; //Habilitamos el reset en USCIAAAA
+    UCA0CTL1 |= UCSSEL__SMCLK;//Conectar la fuente SMCLK a la USCI
+    UCA0BR0 |= 109; //Establecer la velocidad de 9600 bds
+    UCA0MCTL |= UCBRS_2; //Otro registro para configurar la velocidad verificar tabla 36.4
+    UCA0CTL1 &= ~UCSWRST; //Se desconecta el reset
+    UCA0IE |= UCRXIE; // Habilitamos interrupcion de recepcion
+
+    TA0CTL |= TASSEL__SMCLK + MC_0; //Configuramos el timer con el reloj SMCLK y se arranca apagado el timer
+    TA0CCR0 = 65535;//Le colocamos el valor maximo en este registro para tener 0.5 s
+    TA0CCTL0 |= CCIE;//Habilitamos interrupciones por el timer
+
+    __bis_SR_register(GIE);
+
+    while(1){ //sentencia para que se encuentre ciclado infinitamente el programa
+    if(flag == 1){
+        recepcion[27]='\n';//Se coloca un salto de linea
+        recepcion[28]='\r';//Se coloca un retorno de carro
+       imprimir(recepcion,sizeof(recepcion));//Se imprime el arreglo de datos almacenado
+       flag = 0;
+       contador=0;
+    }
+    }
+}
+
+    void imprimir(char mensaje[],unsigned int longitud){ //Funcion para imprimir la trama de datos
+        for (i=0; i<longitud; i++){
+         UCA1TXBUF = mensaje[i];//Aqui se coloca en el buffer UCA1TX para poder observarlo desde el monitor de este equipo
+         __delay_cycles(10000);
+        }
+    }
+
+    #pragma vector=USCI_A0_VECTOR //Interrupcion por recibir dato en el buffer UCA0RXBUF
+    __interrupt void PepitoOriginal(void){
+
+        if(UCA0RXBUF == '\n' && flag2 == 0){ //Entra si detecta salto de linea
+            flag2=1;//Activa la bandera necesaria para comenzar a escribir el arreglo
+            contador=0;
+            TA0CTL = MC__UP;//Se prende el timer
+        }
+
+        if(flag2 == 1){
+            if(contador <= 25 && desbordamiento == 0){//Si el arreglo es menor a 25 sigue escribiendo al igual que si no ha llegado a 25 s
+
+                recepcion[contador]= UCA0RXBUF;//Se guarda cada valor reciido en UCA0RX
+                contador++;
+
+                if(UCA0RXBUF == '\n'){ //Si detecta salto de linea, envia lo que tenga en el arreglo
+                    flag = 1;
+                    contador = 0;
+                    TA0R = 0; //se reinicia el timer
+                }
+            }
+        }
+
+        if(contador >= 26 || desbordamiento == 1){ //si el contador se llena o el desbordamiento de los 25 segundos se activa entra aqui
+        flag = 1;//se pone en true, la bandera para poder imprimir
+        flag2 = 0;//se reinicia la bandera de escritura
+        TA0CCTL0 &= ~CCIE;//se desactivan las interrupciones del timer
+        TA0CTL = MC_0;//se apaga el timer
+        TA0R = 0;//se reinicia el timer
+        contador=0;//se reinicia el contador
+        desbordamiento=0;//se reinicia la bandera de desbordamiento
+        }
+    }
+
+    #pragma vector=TIMER0_A0_VECTOR//Esta es la interrupcion por modo comparacion del timer
+    __interrupt void Pepito3(void){
+    cont_desbord++;
+
+        if(cont_desbord >= 410){
+            desbordamiento=1;
+            cont_desbord=0;
+        }
+    }
