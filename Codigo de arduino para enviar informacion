@@ -1,0 +1,26 @@
+String inputString = "";  // Variable para almacenar datos recibidos
+bool newData = false;     // Bandera para indicar si hay datos nuevos
+
+void setup() {
+    Serial.begin(9600);  // Iniciar comunicación UART con 9600 baudios
+    Serial.println("Escribe algo y presiona Enter:");
+}
+
+void loop() {
+    // Leer datos disponibles en el buffer
+    while (Serial.available()) {
+        char receivedChar = Serial.read();  // Leer un carácter
+        if (receivedChar == '\n') {  // Si presionas "Enter"
+            newData = true;
+        } else {
+            inputString += receivedChar;  // Agregar carácter a la cadena
+        }
+    }
+
+    // Procesar la entrada cuando se presiona "Enter"
+    if (newData) {
+        Serial.println(inputString);  // Imprimir lo recibido
+        inputString = "";  // Limpiar la cadena para la próxima entrada
+        newData = false;
+    }
+}
